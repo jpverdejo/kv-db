@@ -141,13 +141,14 @@ Page nextPage(char * word) {
 		pclose(fp);
 	}
 
+	page.number = pages_count[index];
+
 	filename_size = snprintf(NULL, 0, "./data/%c.%d", letter, page.number);
 
 	filename = (char *)malloc(filename_size + 1);
 	snprintf(filename, filename_size+1, "./data/%c.%d", letter, page.number);
 
-	page.filename = filename;	
-	page.number = pages_count[index];
+	page.filename = filename;
 
 	return page;
 }
