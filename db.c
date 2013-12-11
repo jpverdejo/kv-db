@@ -95,20 +95,25 @@ Page nextPage(char * word) {
 	Page page;
 	page.letter = letter;
 
-	int nDigits = floor(log10(abs(pages_count[index]))) + 1;
-
 	size_t filename_size;
 	filename_size = snprintf(NULL, 0, "./data/%c.%d", letter, pages_count[index]);
 
 	char * filename = (char *)malloc(filename_size + 1);
 	snprintf(filename, filename_size+1, "./data/%c.%d", letter, pages_count[index]);
 
-	printf("%s\n", filename);
+	if( access( filename, F_OK ) == -1 ) {
+		filename_size = snprintf(NULL, 0, "touch %s", filename);
+		char * create_file = (char *)malloc(filename_size + 1);
+		snprintf(create_file, filename_size+1, "touch %s", filename);
+
+		system(create_file);
+	}
+
 	if( access( filename, F_OK ) != -1 ) {
 		FILE *fp;
 		char result[50];
 
-		char command[strlen("wc -l ") + strlen(filename)];
+		char command[strlen("wc -l ") + strlen(filename) +1];
 		snprintf(command, sizeof(command), "wc -l %s", filename);
 
 		/* Open the command for reading. */
@@ -136,10 +141,10 @@ Page nextPage(char * word) {
 		pclose(fp);
 	}
 
-	nDigits = floor(log10(abs(page.number))) + 1;
+	filename_size = snprintf(NULL, 0, "./data/%c.%d", letter, page.number);
 
-	filename = (char *) malloc(sizeof(char) * (nDigits + 9));
-	snprintf(filename, sizeof(filename), "./data/%c.%d", letter, page.number);
+	filename = (char *)malloc(filename_size + 1);
+	snprintf(filename, filename_size+1, "./data/%c.%d", letter, page.number);
 
 	page.filename = filename;	
 	page.number = pages_count[index];
@@ -149,6 +154,9 @@ Page nextPage(char * word) {
 
 void * writeOnFile(void * input) {
 	while (1) {
+		int value; 
+      sem_getvalue(&Wcount, &value); 
+      printf("The value of the semaphors is %d\n", value);
 		sem_wait(&Wcount);
 		sem_wait(&Wseccion);
 
