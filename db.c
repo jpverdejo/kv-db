@@ -9,8 +9,8 @@
 #include <string.h>
 
 //Como las paginas tendran un maximo de 1MB podemos tener 1000 workers que trabajen con archivos
-#define NWRITE 600
-#define NREAD 600
+#define NWRITE 200
+#define NREAD 200
 #define NFIND 600
 #define ENTRIESPERPAGE 5
 
@@ -27,6 +27,7 @@ typedef struct {
 	int index;
 	pthread_t thread;
 	char * response;
+	pthread_mutex_t mutex;
 } Instruction;
 
 typedef struct {
@@ -51,22 +52,17 @@ sem_t * Wcount;
 sem_t * Gavailable;
 sem_t * Favailable;
 
-// OS X no permite saber el valor de un semaforo (no esta implementado sem_getvalue)
-// por lo que mantendre un segundo contador
-int WCountInt;
-int getsCount;
-int savesCount;
-
 int instructionsCounter, nextInstruction;
 Instruction * instructions;
 sem_t * Icounter;
 
-void printMessage(Instruction i, char * message) {
+void printMessage(Instruction * i, char * message) {
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
 	else {
-		printf("(*)%s\n", message);	
+		i->response = (char *) malloc(sizeof(char) * strlen(message));
+		strcpy(i->response, message);
 	}
 }
 
@@ -123,7 +119,7 @@ void initialize() {
 	sem_unlink("Wcount");
 	sem_unlink("Icounter");
 
-	sem_unlink("Ravailable");
+	sem_unlink("Gavailable");
 	sem_unlink("Favailable");
 
 
@@ -135,11 +131,6 @@ void initialize() {
 
 	Gavailable = sem_open("Gavailable", O_CREAT, 0644, NREAD);
 	Favailable = sem_open("Favailable", O_CREAT, 0644, NFIND);
-
-	WCountInt = 0;
-
-	getsCount = 0;
-	savesCount = 0;
 
 	instructionsCounter = -1;
 	nextInstruction = 0;
@@ -247,15 +238,13 @@ void * writeOnFile(void * input) {
 		size_t string_size = snprintf(NULL, 0, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
 		char * string = (char *)malloc(string_size + 1);
 		snprintf(string, string_size +1, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
-		//printMessage(i, string);
-		printf("%s\n", string);
+		printMessage(&i, string);
 
 		pthread_mutex_unlock(pages_mutexs[index]);
 
-		WCountInt--;
-
 		sem_post(WseccionOut);
 		sem_post(Wavailable);
+		pthread_mutex_unlock(&i.mutex);
 	}
 }
 
@@ -266,8 +255,6 @@ void * save(void * input) {
 
 	writes[Wnextin] = *i;
 	Wnextin = (Wnextin + 1) % NWRITE;
-
-	WCountInt++;
 
 	sem_post(WseccionIn);
 	sem_post(Wcount);
@@ -285,46 +272,49 @@ void * getFromFile(void * input) {
 	Page p;
 	p.letter = index[0];
 
+	int found = 0;
+
 	char * token;
 
 	token = strtok(index, ".");
 
 	token = strtok(NULL, ".");
-	p.number = atoi(token);
+	if (token != NULL) {
+		p.number = atoi(token);
 
-	token = strtok(NULL, ".");
-	p.index = atoi(token);
+		token = strtok(NULL, ".");
+		if (token != NULL) {
+			p.index = atoi(token);
 
-	size_t filename_size;
-	char * filename;
+			size_t filename_size;
+			char * filename;
 
-	filename_size = snprintf(NULL, 0, "./data/%c.%d", p.letter, p.number);
+			filename_size = snprintf(NULL, 0, "./data/%c.%d", p.letter, p.number);
 
-	filename = (char *)malloc(filename_size + 1);
-	snprintf(filename, filename_size+1, "./data/%c.%d", p.letter, p.number);
+			filename = (char *)malloc(filename_size + 1);
+			snprintf(filename, filename_size+1, "./data/%c.%d", p.letter, p.number);
 
-	char * word = NULL;
-	size_t size;
-	int i;
+			char * word = NULL;
+			size_t size;
+			int i;
 
-	FILE *fp = fopen(filename, "r");
+			FILE *fp = fopen(filename, "r");
 
-	int found = 0;
+			if(fp != NULL) {
+				for (i=0; i<=p.index && !feof(fp); i++) {
+					getline(&word, &size, fp);
+				}
 
-	if(fp != NULL) {
-		for (i=0; i<=p.index && !feof(fp); i++) {
-			getline(&word, &size, fp);
-		}
+				if (!(strcmp(word, "") == 0 || i<=p.index)) {
+					word[(strlen(word)-1)] = '\0';
 
-		if (!(strcmp(word, "") == 0 || i<=p.index)) {
-			word[(strlen(word)-1)] = '\0';
-
-			found = 1;
-			size_t string_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
-			char * string = (char *)malloc(string_size + 1);
-			snprintf(string, string_size +1, "[GET] %s:%s", copyIndex, word);
-			//printMessage(i, string);
-			printf("%s\n", string);
+					found = 1;
+					size_t string_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
+					char * string = (char *)malloc(string_size + 1);
+					snprintf(string, string_size +1, "[GET] %s:%s", copyIndex, word);
+					printMessage(ins, string);
+				}
+			}
 		}
 	}
 	
@@ -332,15 +322,15 @@ void * getFromFile(void * input) {
 		size_t string_size = snprintf(NULL, 0, "[GET] El indice %s no existe.", copyIndex);
 		char * string = (char *)malloc(string_size + 1);
 		snprintf(string, string_size +1, "[GET] El indice %s no existe.", copyIndex);
-		//printMessage(i, string);
-		printf("%s\n", string);
+		printMessage(ins, string);
 	}
 
 	sem_post(Gavailable);
+	pthread_mutex_unlock(&ins->mutex);
 }
 
 void * findFromFile(void * input) {
-
+	sem_wait(Favailable);
 	FindObject *m = (FindObject*) input;
 
 	FILE * fp;
@@ -356,33 +346,35 @@ void * findFromFile(void * input) {
 
 	fp = fopen(filename, "r");
 	
-	if (fp == NULL)
-		return NULL;
+	if (fp != NULL){
+		m->n_found=0;
+		m->positions = (int *) malloc(sizeof(int));
 
-	m->n_found=0;
-	m->positions = (int *) malloc(sizeof(int));
+		int count = 1;
+		int found = 0;
 
-	int count = 1;
-	int found = 0;
+		while ((read = getline(&line, &len, fp)) != -1) {
+			int length = (strlen(line) -1);
+			line[length] = '\0';
+			
+			if (strcmp(line, m->word) == 0) {
+				found++;
 
-	while ((read = getline(&line, &len, fp)) != -1) {
-		int length = (strlen(line) -1);
-		line[length] = '\0';
-		
-		if (strcmp(line, m->word) == 0) {
-			found++;
+				m->positions = (int *) realloc(m->positions, (sizeof(int) * found));
 
-			m->positions = (int *) realloc(m->positions, (sizeof(int) * found));
-
-			m->positions[found -1] = count;
-			m->n_found++;
+				m->positions[found -1] = count;
+				m->n_found++;
+			}
+			count++;
 		}
-		count++;
+
+		fclose(fp);
+		sem_post(Favailable);
+
+		pthread_exit((void *)m);
 	}
 
-	fclose(fp);
-
-	pthread_exit((void *)m);
+	sem_post(Favailable);
 	return NULL;
 }
 
@@ -441,16 +433,29 @@ void * find(void * input) {
 		}
 	}
 
+	char * message;
+	size_t message_size;
+
 	if (numberResults) {
-		printf("[FIND] %s: ", instruccion->word);
+
+		message_size = snprintf(NULL, 0, "[FIND] %s: ", instruccion->word);
+		message = (char *)malloc(message_size + 1);
+		snprintf(message, message_size+1, "[FIND] %s: ", instruccion->word);
+
 		for (i = 0; i < numberResults; i++) {
-			printf("%s ", resultIDs[i]);
+			message_size = snprintf(NULL, 0, "%s%s", message, resultIDs[i]);
+			message = (char *)malloc(message_size + 1);
+			snprintf(message, message_size+1, "%s%s", message, resultIDs[i]);
 		}
-		printf("\n");
 	}
 	else {
-		printf("[FIND] No se encontro la palabra: %s\n", instruccion->word);
+		message_size = snprintf(NULL, 0, "[FIND] No se encontro la palabra: %s\n", instruccion->word);
+		message = (char *)malloc(message_size + 1);
+		snprintf(message, message_size+1, "[FIND] No se encontro la palabra: %s\n", instruccion->word);
 	}
+
+	printMessage(instruccion, message);
+	pthread_mutex_unlock(&instruccion->mutex);
 }
 
 void * manageInstructions(void * input) {
@@ -460,14 +465,10 @@ void * manageInstructions(void * input) {
 		Instruction i = instructions[nextInstruction];
 
 		if (strcmp(i.command, "save") == 0) {
-			savesCount++;
-
 			pthread_create(&i.thread, NULL, save, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "find") == 0) {
 			pthread_create(&i.thread, NULL, find, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "get") == 0) {
-			getsCount++;
-
 			pthread_create(&i.thread, NULL, getFromFile, &instructions[nextInstruction]);
 		}
 
@@ -493,24 +494,15 @@ main() {
 	size_t size;
 	ssize_t read;
 
-	//do {
-	//while(1) {
-	while ((read = getline(&input, &size, stdin)) != -1) {
+	if(isatty(0))
+		printf ("> ");
+
+	while (read = getline(&input, &size, stdin) != -1) {
 		int length = (strlen(input) -1);
 		input[length] = '\0';
-printf("%s\n", input);
+
 		char command[5];
 		char word[101];
-
-		if(isatty(0))
-			printf ("> ");
-
-		//ssize_t charsNumber = getline(&input, &size, stdin);
-
-		// if(input[charsNumber-1] == '\n') {
-		// 	input[charsNumber-1] = '\0';
-		// }
-
 
 		char *sep;
 		sep = strchr(input, ' ');
@@ -533,6 +525,9 @@ printf("%s\n", input);
 				strcpy(instructions[instructionsCounter].word, word);
 				instructions[instructionsCounter].index = instructionsCounter;
 
+				pthread_mutex_init(&instructions[instructionsCounter].mutex, NULL);
+				pthread_mutex_lock(&instructions[instructionsCounter].mutex);
+
 				sem_post(Icounter);
 			} else {
 				printf("Comando invalido. Los comandos disponibles son: save, find, get.\n");
@@ -543,7 +538,16 @@ printf("%s\n", input);
 				printf("Comando invalido. Los comandos disponibles son: save, find, get.\n");
 			}
 		}
+
+		if(isatty(0))
+			printf ("> ");
 	}
-	//} while (strcmp(input, "") != 0);
-	while(1) {}
+	
+	int i;
+
+	// Esperamos que todas las instruccions terminen
+	for(i=0; i <= instructionsCounter; i++) {
+		printf("Esperando instruccion %d\n", i);
+		pthread_mutex_lock(&instructions[i].mutex);
+	}
 }
