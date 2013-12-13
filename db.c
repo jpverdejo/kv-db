@@ -329,9 +329,9 @@ void * getFromFile(void * input) {
 	}
 	
 	if (!found) {
-		size_t string_size = snprintf(NULL, 0, "\n[GET] El indice %s no existe.\n", copyIndex);
+		size_t string_size = snprintf(NULL, 0, "[GET] El indice %s no existe.", copyIndex);
 		char * string = (char *)malloc(string_size + 1);
-		snprintf(string, string_size +1, "\n[GET] El indice %s no existe.\n", copyIndex);
+		snprintf(string, string_size +1, "[GET] El indice %s no existe.", copyIndex);
 		//printMessage(i, string);
 		printf("%s\n", string);
 	}
