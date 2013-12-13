@@ -492,7 +492,7 @@ main() {
 	char * input = NULL;
 
 	//do {
-	while(1) {
+	while((isatty(0) && !feof(stdin)) || !isatty(0)) {
 		size_t size;
 		char command[5];
 		char word[101];
@@ -540,4 +540,5 @@ main() {
 		}
 	}
 	//} while (strcmp(input, "") != 0);
+	while(1) {}
 }
