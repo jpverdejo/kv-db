@@ -480,6 +480,38 @@ void increaseInstructionsList() {
 	instructions = (Instruction *) realloc(instructions, (sizeof(Instruction) * (instructionsCounter +1)));
 }
 
+char * getALine(void) {
+    char * line = malloc(110), * linep = line;
+    size_t lenmax = 110, len = lenmax;
+    int c;
+
+    if(line == NULL)
+        return NULL;
+
+    for(;;) {
+        c = fgetc(stdin);
+        if(c == EOF)
+            break;
+
+        if(--len == 0) {
+            len = lenmax;
+            char * linen = realloc(linep, lenmax *= 2);
+
+            if(linen == NULL) {
+                free(linep);
+                return NULL;
+            }
+            line = linen + (line - linep);
+            linep = linen;
+        }
+
+        if((*line++ = c) == '\n')
+            break;
+    }
+    *line = '\0';
+    return linep;
+}
+
 main() {
 	initialize();
 
@@ -489,7 +521,7 @@ main() {
 	pthread_t instructionsManager;
 	pthread_create(&instructionsManager, NULL, manageInstructions, NULL);
 	
-	char * input = NULL;
+	
 
 	//do {
 	while(1) {
@@ -500,10 +532,11 @@ main() {
 		if(isatty(0))
 			printf ("> ");
 
-		ssize_t charsNumber = getline(&input, &size, stdin);
+		//ssize_t charsNumber = getline(&input, &size, stdin);
+		char * input = getALine();
 
-		if(input[charsNumber-1] == '\n') {
-			input[charsNumber-1] = '\0';
+		if(input[strlen(input)-1] == '\n') {
+			input[strlen(input)-1] = '\0';
 		}
 
 
