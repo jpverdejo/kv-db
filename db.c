@@ -41,6 +41,8 @@ typedef struct {
 int pages_count[27];
 pthread_mutex_t * pages_mutexs[27];
 
+pthread_mutex_t instructionsMutex;
+
 // Productor consumidor para writes
 Instruction writes[NWRITE];
 int Wnextin, Wnextout;
@@ -56,22 +58,19 @@ int instructionsCounter, nextInstruction;
 Instruction * instructions;
 sem_t * Icounter;
 
-void printMessage(Instruction * i, char * message) {
-	printf("(1) %d - '%s'\n", i->index, message);
+void printMessage(Instruction i, char * message) {
+	printf("%s\n", message);
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
 	else {
-		printf("(2) %d - '%s'\n", i->index, message);
-		instructions[i->index].response = (char *) malloc(sizeof(char) * strlen(message));
-		printf("(3) %d - '%s'\n", i->index, message);
-		printf("%s\n", instructions[i->index].response);
-		strcpy(instructions[i->index].response, message);
-		printf("(4) %d - '%s'\n", i->index, message);
-		pthread_mutex_unlock(&instructions[i->index].mutex);
-		printf("(5) %d - '%s'\n", i->index, message);
+		pthread_mutex_lock(&instructionsMutex);
+		instructions[i.index].response = (char *) malloc(sizeof(char) * strlen(message));
+		strcpy(instructions[i.index].response, message);
+
+		pthread_mutex_unlock(&instructions[i.index].mutex);
+		pthread_mutex_unlock(&instructionsMutex);
 	}
-	printf("(6) %d - '%s'\n", i->index, message);
 }
 
 void initialize() {
@@ -138,6 +137,8 @@ void initialize() {
 
 	Gavailable = sem_open("Gavailable", O_CREAT, 0644, NREAD);
 	Favailable = sem_open("Favailable", O_CREAT, 0644, NFIND);
+
+	pthread_mutex_init(&instructionsMutex, NULL);
 
 	instructionsCounter = -1;
 	nextInstruction = 0;
@@ -245,7 +246,7 @@ void * writeOnFile(void * input) {
 		size_t string_size = snprintf(NULL, 0, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
 		char * string = (char *)malloc(string_size + 1);
 		snprintf(string, string_size +1, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
-		printMessage(&i, string);
+		//printMessage(&i, string);
 
 		pthread_mutex_unlock(pages_mutexs[index]);
 
@@ -267,10 +268,16 @@ void * save(void * input) {
 }
 
 void * getFromFile(void * input) {
-
 	sem_wait(Gavailable);
-	Instruction * ins = (Instruction *) input;
-	char * index = ins->word;
+
+	int indice = (int) input;
+
+	pthread_mutex_lock(&instructionsMutex);
+	Instruction instruccion = instructions[indice];
+	pthread_mutex_unlock(&instructionsMutex);
+	//memcpy(&instruccion, &input, sizeof(Instruction));
+
+	char * index = instruccion.word;
 
 	char * copyIndex = (char *) malloc(sizeof(char) * (strlen(index) +1));
 	strcpy(copyIndex, index);
@@ -318,7 +325,7 @@ void * getFromFile(void * input) {
 					size_t string_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
 					char * string = (char *)malloc(string_size + 1);
 					snprintf(string, string_size +1, "[GET] %s:%s", copyIndex, word);
-					printMessage(ins, string);
+					printMessage(instruccion, string);
 				}
 			}
 		}
@@ -328,7 +335,7 @@ void * getFromFile(void * input) {
 		size_t string_size = snprintf(NULL, 0, "[GET] El indice %s no existe.", copyIndex);
 		char * string = (char *)malloc(string_size + 1);
 		snprintf(string, string_size +1, "[GET] El indice %s no existe.", copyIndex);
-		printMessage(ins, string);
+		printMessage(instruccion, string);
 	}
 
 	sem_post(Gavailable);
@@ -459,22 +466,23 @@ void * find(void * input) {
 		snprintf(message, message_size+1, "[FIND] No se encontro la palabra: %s\n", instruccion->word);
 	}
 
-	printMessage(instruccion, message);
+	//printMessage(instruccion, message);
 }
 
 void * manageInstructions(void * input) {
 	while(1) {
 		sem_wait(Icounter);
 
+		pthread_mutex_lock(&instructionsMutex);
 		Instruction i = instructions[nextInstruction];
+		pthread_mutex_unlock(&instructionsMutex);
 
 		if (strcmp(i.command, "save") == 0) {
 			//pthread_create(&i.thread, NULL, save, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "find") == 0) {
 			//pthread_create(&i.thread, NULL, find, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "get") == 0) {
-			pthread_create(&i.thread, NULL, getFromFile, &instructions[nextInstruction]);
-			pthread_join(i.thread);
+			pthread_create(&i.thread, NULL, getFromFile, (void *) nextInstruction);
 		}
 
 		nextInstruction++;
@@ -483,7 +491,9 @@ void * manageInstructions(void * input) {
 
 void increaseInstructionsList() {
 	instructionsCounter++;
+	pthread_mutex_lock(&instructionsMutex);
 	instructions = (Instruction *) realloc(instructions, (sizeof(Instruction) * (instructionsCounter +1)));
+	pthread_mutex_unlock(&instructionsMutex);
 }
 
 main() {
