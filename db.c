@@ -490,19 +490,17 @@ main() {
 	pthread_create(&instructionsManager, NULL, manageInstructions, NULL);
 	
 	char * input = NULL;
-	size_t size;
-	ssize_t charsNumber;
 
-	FILE *fp = fopen("input", "r");
 	//do {
-	while ((charsNumber = getline(&input, &size, fp)) != -1) {
+	while(1) {
+		size_t size;
 		char command[5];
 		char word[101];
 
 		if(isatty(0))
 			printf ("> ");
 
-		//ssize_t charsNumber = getline(&input, &size, fp);
+		ssize_t charsNumber = getline(&input, &size, stdin);
 
 		if(input[charsNumber-1] == '\n') {
 			input[charsNumber-1] = '\0';
@@ -542,5 +540,4 @@ main() {
 		}
 	}
 	//} while (strcmp(input, "") != 0);
-	while(1) {}
 }
