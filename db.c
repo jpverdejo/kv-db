@@ -57,13 +57,21 @@ Instruction * instructions;
 sem_t * Icounter;
 
 void printMessage(Instruction * i, char * message) {
+	printf("(1) %d - '%s'\n", i->index, message);
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
 	else {
-		i->response = (char *) malloc(sizeof(char) * strlen(message));
-		strcpy(i->response, message);
+		printf("(2) %d - '%s'\n", i->index, message);
+		instructions[i->index].response = (char *) malloc(sizeof(char) * strlen(message));
+		printf("(3) %d - '%s'\n", i->index, message);
+		printf("%s\n", instructions[i->index].response);
+		strcpy(instructions[i->index].response, message);
+		printf("(4) %d - '%s'\n", i->index, message);
+		pthread_mutex_unlock(&instructions[i->index].mutex);
+		printf("(5) %d - '%s'\n", i->index, message);
 	}
+	printf("(6) %d - '%s'\n", i->index, message);
 }
 
 void initialize() {
@@ -121,7 +129,6 @@ void initialize() {
 
 	sem_unlink("Gavailable");
 	sem_unlink("Favailable");
-
 
 	Wavailable = sem_open("Wavailable", O_CREAT, 0644, NWRITE);
 	WseccionIn = sem_open("WseccionIn", O_CREAT, 0644, 1);
@@ -244,7 +251,6 @@ void * writeOnFile(void * input) {
 
 		sem_post(WseccionOut);
 		sem_post(Wavailable);
-		pthread_mutex_unlock(&i.mutex);
 	}
 }
 
@@ -269,10 +275,10 @@ void * getFromFile(void * input) {
 	char * copyIndex = (char *) malloc(sizeof(char) * (strlen(index) +1));
 	strcpy(copyIndex, index);
 
+	int found = 0;
+
 	Page p;
 	p.letter = index[0];
-
-	int found = 0;
 
 	char * token;
 
@@ -326,7 +332,6 @@ void * getFromFile(void * input) {
 	}
 
 	sem_post(Gavailable);
-	pthread_mutex_unlock(&ins->mutex);
 }
 
 void * findFromFile(void * input) {
@@ -455,7 +460,6 @@ void * find(void * input) {
 	}
 
 	printMessage(instruccion, message);
-	pthread_mutex_unlock(&instruccion->mutex);
 }
 
 void * manageInstructions(void * input) {
@@ -465,11 +469,12 @@ void * manageInstructions(void * input) {
 		Instruction i = instructions[nextInstruction];
 
 		if (strcmp(i.command, "save") == 0) {
-			pthread_create(&i.thread, NULL, save, &instructions[nextInstruction]);
+			//pthread_create(&i.thread, NULL, save, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "find") == 0) {
-			pthread_create(&i.thread, NULL, find, &instructions[nextInstruction]);
+			//pthread_create(&i.thread, NULL, find, &instructions[nextInstruction]);
 		} else if (strcmp(i.command, "get") == 0) {
 			pthread_create(&i.thread, NULL, getFromFile, &instructions[nextInstruction]);
+			pthread_join(i.thread);
 		}
 
 		nextInstruction++;
@@ -545,9 +550,19 @@ main() {
 	
 	int i;
 
-	// Esperamos que todas las instruccions terminen
+	
+	FILE *fp;
+
+	if(!isatty('0'))
+		fp = fopen("query.out", "w");
+
 	for(i=0; i <= instructionsCounter; i++) {
-		printf("Esperando instruccion %d\n", i);
 		pthread_mutex_lock(&instructions[i].mutex);
+		if(!isatty('0')){
+			fputs(instructions[i].response, fp);
+			fputs("\n", fp);
+		}
 	}
+	if(!isatty('0'))
+		fclose(fp);
 }
