@@ -9,8 +9,8 @@
 #include <string.h>
 
 //Como las paginas tendran un maximo de 1MB podemos tener 1000 workers que trabajen con archivos
-#define NWRITE 200
-#define NREAD 200
+#define NWRITE 600
+#define NREAD 600
 #define NFIND 600
 #define ENTRIESPERPAGE 5
 
@@ -336,7 +336,7 @@ void * getFromFile(void * input) {
 		printf("%s\n", string);
 	}
 
-	getsCount--;
+	sem_post(Gavailable);
 }
 
 void * findFromFile(void * input) {
@@ -355,6 +355,7 @@ void * findFromFile(void * input) {
 	snprintf(filename, filename_size+1, "./data/%s", m->filename);
 
 	fp = fopen(filename, "r");
+	
 	if (fp == NULL)
 		return NULL;
 
@@ -427,7 +428,7 @@ void * find(void * input) {
 	for (i = 0; i < n_workers; i++) {
 		FindObject *m;
 		pthread_join(workers[i], (void *)&m);
-		if (m->n_found > 0) {
+		if (m != NULL && m->n_found > 0) {
 			for (k = 0; k < m->n_found; k++) {
 				numberResults++;
 				
@@ -446,6 +447,9 @@ void * find(void * input) {
 			printf("%s ", resultIDs[i]);
 		}
 		printf("\n");
+	}
+	else {
+		printf("[FIND] No se encontro la palabra: %s\n", instruccion->word);
 	}
 }
 
