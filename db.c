@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <semaphore.h>
+#include <fcntl.h>
 #include <math.h>
 #include <unistd.h>
 #include <string.h>
@@ -467,7 +468,7 @@ void * manageInstructions(void * input) {
 
 void increaseInstructionsList() {
 	instructionsCounter++;
-	instructions = (Instruction *) realloc(instructions, (sizeof(Instruction) * (instructionsCounter +2)));
+	instructions = (Instruction *) realloc(instructions, (sizeof(Instruction) * (instructionsCounter +1)));
 }
 
 main() {
