@@ -274,6 +274,7 @@ void * save(void * input) {
 }
 
 void * getFromFile(void * input) {
+
 	sem_wait(Gavailable);
 	Instruction * ins = (Instruction *) input;
 	char * index = ins->word;
@@ -358,6 +359,7 @@ void * findFromFile(void * input) {
 		return NULL;
 
 	m->n_found=0;
+	m->positions = (int *) malloc(sizeof(int));
 
 	int count = 1;
 	int found = 0;
@@ -369,7 +371,7 @@ void * findFromFile(void * input) {
 		if (strcmp(line, m->word) == 0) {
 			found++;
 
-			m->positions = realloc(m->positions, (sizeof(int) * found));
+			m->positions = (int *) realloc(m->positions, (sizeof(int) * found));
 
 			m->positions[found -1] = count;
 			m->n_found++;
