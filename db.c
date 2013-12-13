@@ -491,6 +491,7 @@ main() {
 	
 	char * input = NULL;
 
+	FILE *fp = fopen("input", "r");
 	//do {
 	while(1) {
 		size_t size;
@@ -500,7 +501,7 @@ main() {
 		if(isatty(0))
 			printf ("> ");
 
-		ssize_t charsNumber = getline(&input, &size, stdin);
+		ssize_t charsNumber = getline(&input, &size, fp);
 
 		if(input[charsNumber-1] == '\n') {
 			input[charsNumber-1] = '\0';
