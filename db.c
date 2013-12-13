@@ -247,7 +247,8 @@ void * writeOnFile(void * input) {
 		size_t string_size = snprintf(NULL, 0, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
 		char * string = (char *)malloc(string_size + 1);
 		snprintf(string, string_size +1, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, i.word);
-		printMessage(i, string);
+		//printMessage(i, string);
+		printf("%s\n", string);
 
 		pthread_mutex_unlock(pages_mutexs[index]);
 
@@ -315,6 +316,8 @@ void * getFromFile(void * input) {
 		}
 
 		if (!(strcmp(word, "") == 0 || i<=p.index)) {
+			word[(strlen(word)-1)] = '\0';
+
 			found = 1;
 			size_t string_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
 			char * string = (char *)malloc(string_size + 1);
@@ -532,82 +535,3 @@ main() {
 	}
 	//} while (strcmp(input, "") != 0);
 }
-
-// main() {
-// 	initialize();
-
-// 	pthread_t writeOnFileThread;
-// 	pthread_create(&writeOnFileThread, NULL, writeOnFile, NULL);
-	
-// 	char * input = NULL;
-
-// 	do {
-// 		size_t size;
-// 		char command[5];
-// 		char word[101];
-
-// 		printf ("> ");
-
-// 		ssize_t charsNumber = getline(&input, &size, stdin);
-
-// 		if(input[charsNumber-1] == '\n') {
-// 			input[charsNumber-1] = '\0';
-// 		}
-
-
-// 		char *sep;
-// 		sep = strchr(input, ' ');
-
-// 		if (sep) {
-// 			size_t position = sep - input;
-
-// 			strncpy(command, input, position);
-// 			command[position] = '\0';
-
-// 			int wordLength = (strlen(input) - position -1);
-
-// 			strncpy(word, input + position + 1, wordLength);
-// 			word[wordLength] = '\0';
-
-// 			if (strcmp(command, "save") == 0) {
-// 				increaseInstructionsList();
-// 				Word w;
-// 				strcpy(w.word, word);
-// 				w.index = instructionsCounter;
-// 				save(w);
-
-// 				instructionsCounter++;
-// 			} else if (strcmp(command, "find") == 0) {
-				
-// 			} else if (strcmp(command, "get") == 0) {
-// 				getsCount++;
-
-// 				increaseInstructionsList();
-
-// 				Word w;
-// 				strcpy(w.word, word);
-// 				w.index = instructionsCounter;
-
-// 				pthread_t getThread;
-// 				pthread_create(&getThread, NULL, getFromFile, &word);
-				
-// 				instructionsCounter++;
-// 			} else {
-// 				printf("Comando invalido. Los comandos disponibles son: save, find, get, exit.\n", command);
-// 			}
-// 		}
-// 		else {
-// 			if (strcmp(input, "") == 0 || strcmp(input, "exit") == 0) {
-// 				break;
-// 			}
-// 			else {
-// 				printf("(*) Comando invalido. Los comandos disponibles son: save, find, get, exit.\n", input);
-// 			}
-// 		}
-// 	} while (strcmp(input, "") != 0);
-
-// 	while(1) {
-// 		if (WCountInt == 0 && getsCount == 0)
-// 			break;
-// 	}
-// }
