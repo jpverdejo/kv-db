@@ -9,12 +9,13 @@
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <errno.h>
 
-//Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
-#define NWRITE 200
-#define NREAD 200
-#define NFIND 600
-#define ENTRIESPERPAGE 10000
+//Como las paginas tendran un maximo de 50MB (palabras de 100 bytes * 500.000 lineas) podemos tener 20 workers que trabajen con archivos
+#define NWRITE 1
+#define NREAD 2
+#define NFIND 1
+#define ENTRIESPERPAGE 500000
 
 // Estructura para definir una pagina donde escribir una nueva entrada
 typedef struct {
@@ -591,6 +592,7 @@ void increaseInstructionsList() {
 }
 
 int main() {
+
 	// Inicializamos la DB
 	initialize();
 
@@ -667,7 +669,12 @@ int main() {
 
 	// Si estamos leyendo desde un archivo abrimos el archivo de salida
 	if(!isatty(0)) {
-		fp = fopen("query.out", "w");
+		fp = fopen("../query.out", "w");
+		if(fp == NULL) {
+			printf("No se pudo guardar el archivo de salida query.out (%d)\n", FOPEN_MAX);
+			printf("%s\n", strerror(errno));
+			return 0;
+		}
 	}
 
 	int i;
@@ -675,7 +682,7 @@ int main() {
 	for(i=0; i <= instructionsCounter; i++) {
 		pthread_mutex_lock(&instructionsMutex);
 		pthread_join(instructions[i].thread, NULL);
-
+		
 		// Si estamos leyendo desde un archivo escribimos la respuesta para esa instruccion
 		if(!isatty(0)){
 			fputs(instructions[i].response, fp);
