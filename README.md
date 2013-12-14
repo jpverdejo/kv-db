@@ -24,7 +24,9 @@ Al finalizar todas las instrucciones se ejecuta la funcion finishExecution() par
 ###Ejecución:
  - Compilacion:
  	```make```
+
  - Ejecución modo "terminal"
   - ```./build/db.exe```
+
  - Ejecución con archivo de entrada
   - ```./build/db.exe < <archivo input>```
