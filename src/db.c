@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <errno.h>
+#include <signal.h>
 
 // En OS X el limite maximo de archivos abiertos es de 20
 #define NWRITE 5
@@ -32,7 +33,6 @@ typedef struct {
 	int index;
 	pthread_t thread;
 	char * response;
-	pthread_mutex_t mutex;
 } Instruction;
 
 // Estructura que define un objeto de busqueda
@@ -566,6 +566,46 @@ void increaseInstructionsList() {
 	pthread_mutex_unlock(&instructionsMutex);
 }
 
+void finishExecution() {
+	FILE *fp;
+
+	//Si estamos leyendo desde un archivo abrimos el archivo de salida
+	if(!isatty(0)) {
+		printf("Imprimendo archivo de salida query.out\n");
+
+		fp = fopen("query.out", "w");
+		if (fp == NULL) {
+			printf("No se pudo abrir el archivo de salida query.out (%s)\n", strerror(errno));
+			return 0;
+		}
+	}
+
+	int i;
+	// Esperamos que cada thread de funcion termine, en orden
+	for(i=0; i <= instructionsCounter; i++) {
+		// Nos aseguramos que el thread ya se haya creado
+		sem_wait(workingInstruction);
+
+		// Esperamos que el thread termine
+		pthread_join(instructions[i].thread, NULL);
+
+		pthread_mutex_lock(&instructionsMutex);
+
+		// Si estamos leyendo desde un archivo escribimos la respuesta para esa instruccion
+		if(!isatty(0)){
+			printf(".");
+			fputs(instructions[i].response, fp);
+			fputs("\n", fp);
+		}
+		pthread_mutex_unlock(&instructionsMutex);
+	}
+	
+	if(!isatty(0)) {
+		printf("\nFinalizado.\n");
+		fclose(fp);
+	}
+}
+
 int main() {
 	// Inicializamos la DB
 	initialize();
@@ -620,12 +660,12 @@ int main() {
 				// Aumentamos el semaforo de instrucciones
 				sem_post(Icounter);
 			} else {
-				printf("Comando invalido. Los comandos disponibles son: save, find, get.\n");
+				printf("Comando invalido. Los comandos disponibles son: save, find, get, exit.\n");
 			}
 		}
 		else {
 			if (!(strcmp(input, "") == 0 || strcmp(input, "exit") == 0)) {
-				printf("Comando invalido. Los comandos disponibles son: save, find, get.\n");
+				printf("Comando invalido. Los comandos disponibles son: save, find, get, exit.\n");
 			}
 			else {
 				break;
@@ -636,46 +676,7 @@ int main() {
 			printf ("> ");
 	}
 	
-	FILE *fp;
-
-	// Si estamos leyendo desde un archivo abrimos el archivo de salida
-	// if(!isatty(0)) {
-	// 	fp = fopen("query.out", "w");
-	// 	if (fp == NULL) {
-	// 		printf("No se pudo abrir el archivo de salida query.out %s\n", strerror(errno));
-	// 		return 0;
-	// 	}
-	// }
-
-	int i;
-	// Esperamos que cada thread de funcion termine, en orden
-	for(i=0; i <= instructionsCounter; i++) {
-		// Nos aseguramos que el thread ya se haya creado
-		sem_wait(workingInstruction);
-
-		// Esperamos que el thread termine
-		pthread_join(instructions[i].thread, NULL);
-
-		if(i == 0 && !isatty(0)) {
-			fp = fopen("query.out", "w");
-			if (fp == NULL) {
-				printf("No se pudo abrir el archivo de salida query.out %s\n", strerror(errno));
-				return 0;
-			}
-		}
-	
-		pthread_mutex_lock(&instructionsMutex);
-
-		// Si estamos leyendo desde un archivo escribimos la respuesta para esa instruccion
-		if(!isatty(0)){
-			fputs(instructions[i].response, fp);
-			fputs("\n", fp);
-		}
-		pthread_mutex_unlock(&instructionsMutex);
-	}
-	
-	if(!isatty(0))
-		fclose(fp);
+	finishExecution();
 
 	return 0;
 }
