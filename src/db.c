@@ -11,11 +11,11 @@
 #include <ctype.h>
 #include <errno.h>
 
-//Como las paginas tendran un maximo de 50MB (palabras de 100 bytes * 500.000 lineas) podemos tener 20 workers que trabajen con archivos
-#define NWRITE 1
-#define NREAD 2
-#define NFIND 1
-#define ENTRIESPERPAGE 500000
+//Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
+#define NWRITE 200
+#define NREAD 200
+#define NFIND 600
+#define ENTRIESPERPAGE 10000
 
 // Estructura para definir una pagina donde escribir una nueva entrada
 typedef struct {
