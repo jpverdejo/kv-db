@@ -9,7 +9,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
-#include <errno.h>
 
 //Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
 #define NWRITE 200
@@ -67,11 +66,13 @@ sem_t * Favailable;
 int instructionsCounter;
 Instruction * instructions;
 sem_t * Icounter;
+sem_t * workingInstruction;
 
 // En esta funcion manejaremos la impresion de mensajes por instruccion
 // Si estamos en modo "terminal" imprimimos directamente
 // Si no lo guardamos en el campo "response" de la instruccion dada para imprimirlo al final en el archivo
 void printMessage(Instruction i, char * message) {
+	//printf("(*) %s\n", message);
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
@@ -140,6 +141,8 @@ void initialize() {
 	sem_unlink("Wcount");
 	sem_unlink("Icounter");
 
+	sem_unlink("workingInstruction");
+
 	sem_unlink("Gavailable");
 	sem_unlink("Favailable");
 
@@ -148,6 +151,8 @@ void initialize() {
 	WseccionOut = sem_open("WseccionOut", O_CREAT, 0644, 1);
 	Wcount = sem_open("Wcount", O_CREAT, 0644, 0);
 	Icounter = sem_open("Icounter", O_CREAT, 0644, 0);
+
+	workingInstruction = sem_open("workingInstruction", O_CREAT, 0644, 0);
 
 	Gavailable = sem_open("Gavailable", O_CREAT, 0644, NREAD);
 	Favailable = sem_open("Favailable", O_CREAT, 0644, NFIND);
@@ -310,7 +315,8 @@ void * getFromFile(void * input) {
 	sem_wait(Gavailable);
 
 	// Obtenemos un indice de instruccion, con eso obtendremos el resto de la informacion
-	int indice = *(int *) input;
+	//int indice = *(int *) input;
+	int indice = (int) input;
 
 	pthread_mutex_lock(&instructionsMutex);
 	Instruction instruccion = instructions[indice];
@@ -318,6 +324,7 @@ void * getFromFile(void * input) {
 	// Guardamos 2 copias de la palabra. La primera se usará para buscar las distintas partes del indice
 	// La segunda es para el mensaje de salida
 	char * index = instruccion.word;
+	
 
 	char * copyIndex = (char *) malloc(sizeof(char) * (strlen(index) +1));
 	strcpy(copyIndex, index);
@@ -334,6 +341,10 @@ void * getFromFile(void * input) {
 	token = strtok(index, ".");
 
 	token = strtok(NULL, ".");
+
+	size_t output_message_size;
+	char * output_message;
+
 	if (token != NULL) {
 		p.number = atoi(token);
 
@@ -378,24 +389,27 @@ void * getFromFile(void * input) {
 						found = 1;
 
 						// Creamos el string de salida
-						size_t string_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
-						char * string = (char *)malloc(string_size + 1);
-						snprintf(string, string_size +1, "[GET] %s:%s", copyIndex, word);
-						printMessage(instruccion, string);
+						output_message_size = snprintf(NULL, 0, "[GET] %s:%s", copyIndex, word);
+						output_message = (char *)malloc(output_message_size + 1);
+						snprintf(output_message, output_message_size +1, "[GET] %s:%s", copyIndex, word);
 					}
 				}
+
+				fclose(fp);
 			}
 		}
 	}
 	
 	// Si no encontramos valor para el indice dado imprimimos un mensaje que lo indica
 	if (!found) {
-		size_t string_size = snprintf(NULL, 0, "[GET] El indice %s no existe.", copyIndex);
-		char * string = (char *)malloc(string_size + 1);
-		snprintf(string, string_size +1, "[GET] El indice %s no existe.", copyIndex);
-		printMessage(instruccion, string);
+		output_message_size = snprintf(NULL, 0, "[GET] El indice %s no existe.", copyIndex);
+		output_message = (char *)malloc(output_message_size + 1);
+		snprintf(output_message, output_message_size +1, "[GET] El indice %s no existe.", copyIndex);
 	}
 
+	printf("IMprimir %d\n", indice);
+	printMessage(instruccion, output_message);
+	
 	sem_post(Gavailable);
 
 	return NULL;
@@ -567,15 +581,17 @@ void * manageInstructions(void * input) {
 
 		// Como el valor de la instruccion se pasa por referencia se debe copiar (despues de la SC se aumenta)
 		int currentInstruction = nextInstruction;
-
+		
 		// Se levanta el thread en la funcion correspondiente
 		if (strcmp(instructions[currentInstruction].command, "save") == 0) {
 			pthread_create(&instructions[currentInstruction].thread, NULL, save, &currentInstruction);
 		} else if (strcmp(instructions[currentInstruction].command, "find") == 0) {
 			pthread_create(&instructions[currentInstruction].thread, NULL, find, &currentInstruction);
 		} else if (strcmp(instructions[currentInstruction].command, "get") == 0) {
-			pthread_create(&instructions[currentInstruction].thread, NULL, getFromFile, &currentInstruction);
+			pthread_create(&instructions[currentInstruction].thread, NULL, getFromFile, (void *)currentInstruction);
 		}
+
+		sem_post(workingInstruction);
 		pthread_mutex_unlock(&instructionsMutex);
 
 		nextInstruction++;
@@ -592,7 +608,6 @@ void increaseInstructionsList() {
 }
 
 int main() {
-
 	// Inicializamos la DB
 	initialize();
 
@@ -665,14 +680,16 @@ int main() {
 			printf ("> ");
 	}
 	
+	
+	sem_wait(workingInstruction);
+	
 	FILE *fp;
 
 	// Si estamos leyendo desde un archivo abrimos el archivo de salida
 	if(!isatty(0)) {
-		fp = fopen("../query.out", "w");
-		if(fp == NULL) {
-			printf("No se pudo guardar el archivo de salida query.out (%d)\n", FOPEN_MAX);
-			printf("%s\n", strerror(errno));
+		fp = fopen("query.out", "w");
+		if (fp == NULL) {
+			printf("No se pudo abrir el archivo de salida query.out\n");
 			return 0;
 		}
 	}
@@ -680,9 +697,10 @@ int main() {
 	int i;
 	// Esperamos que cada thread de funcion termine, en orden
 	for(i=0; i <= instructionsCounter; i++) {
-		pthread_mutex_lock(&instructionsMutex);
 		pthread_join(instructions[i].thread, NULL);
-		
+	
+		pthread_mutex_lock(&instructionsMutex);
+
 		// Si estamos leyendo desde un archivo escribimos la respuesta para esa instruccion
 		if(!isatty(0)){
 			fputs(instructions[i].response, fp);
