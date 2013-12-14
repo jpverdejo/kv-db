@@ -12,9 +12,9 @@
 #include <errno.h>
 
 //Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
-#define NWRITE 200
-#define NREAD 200
-#define NFIND 600
+#define NWRITE 1
+#define NREAD 1
+#define NFIND 1
 #define ENTRIESPERPAGE 10000
 
 // Estructura para definir una pagina donde escribir una nueva entrada
@@ -51,17 +51,10 @@ pthread_mutex_t * pages_mutexs[27];
 // (Si alguien lo usa mientras se hace el realloc (no-atomico) explota todo. Comprobado.)
 pthread_mutex_t instructionsMutex;
 
-// Productor consumidor para writes
-Instruction writes[NWRITE];
-int Wnextin, Wnextout;
-sem_t * Wavailable;
-sem_t * WseccionIn;
-sem_t * WseccionOut;
-sem_t * Wcount;
-
 // Semaforos para limitar la cantidad de archivos abiertos por funcion
 sem_t * Gavailable;
 sem_t * Favailable;
+sem_t * Wavailable;
 
 // Contador, arreglo y semaforo para el listado de instrucciones
 int instructionsCounter;
@@ -73,7 +66,7 @@ sem_t * workingInstruction;
 // Si estamos en modo "terminal" imprimimos directamente
 // Si no lo guardamos en el campo "response" de la instruccion dada para imprimirlo al final en el archivo
 void printMessage(Instruction i, char * message) {
-	printf("(*) %s\n", message);
+	
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
@@ -132,31 +125,19 @@ void initialize() {
 		pthread_mutex_init(pages_mutexs[i], NULL);
 	}
 
-	// Inicializamos el productor consumidor para writes
-	Wnextin=0;
-	Wnextout=0;
-
-	sem_unlink("Wavailable");
-	sem_unlink("WseccionIn");
-	sem_unlink("WseccionOut");
-	sem_unlink("Wcount");
-	sem_unlink("Icounter");
-
 	sem_unlink("workingInstruction");
+	sem_unlink("Icounter");
 
 	sem_unlink("Gavailable");
 	sem_unlink("Favailable");
-
-	Wavailable = sem_open("Wavailable", O_CREAT, 0644, NWRITE);
-	WseccionIn = sem_open("WseccionIn", O_CREAT, 0644, 1);
-	WseccionOut = sem_open("WseccionOut", O_CREAT, 0644, 1);
-	Wcount = sem_open("Wcount", O_CREAT, 0644, 0);
-	Icounter = sem_open("Icounter", O_CREAT, 0644, 0);
+	sem_unlink("Wavailable");
 
 	workingInstruction = sem_open("workingInstruction", O_CREAT, 0644, 0);
+	Icounter = sem_open("Icounter", O_CREAT, 0644, 0);
 
 	Gavailable = sem_open("Gavailable", O_CREAT, 0644, NREAD);
 	Favailable = sem_open("Favailable", O_CREAT, 0644, NFIND);
+	Wavailable = sem_open("Wavailable", O_CREAT, 0644, NWRITE);
 
 	// Inicializamos el mutex para el arreglo de instrucciones
 	pthread_mutex_init(&instructionsMutex, NULL);
@@ -181,7 +162,7 @@ int linesInFile(char * filename) {
 		counter++;
 	}
 
-	pclose(fp);
+	fclose(fp);
 
 	return counter;
 }
@@ -250,69 +231,47 @@ Page nextPage(char * word) {
 
 
 // Funcion que escribe una palabra en un archivo (Consumidor)
-void * writeOnFile(void * input) {
-	while (1) {
-		sem_wait(Wcount);
-		sem_wait(WseccionOut);
-
-		// Creamos una copia de la instruccion correpondiente
-		// Guardamos aparte la palabra para evitar problemas con un posible futuro realloc del arreglo de instrucciones
-		pthread_mutex_lock(&instructionsMutex);
-		Instruction i = writes[Wnextout];
-		char * word = i.word;
-		pthread_mutex_unlock(&instructionsMutex);
-		
-		Wnextout = (Wnextout + 1) % 100;
-
-		Page page = nextPage(word);
-		int index = getIndex(page.letter);
-
-		pthread_mutex_lock(pages_mutexs[index]);
-		
-		page = nextPage(word);
-		index = getIndex(page.letter);
-
-		FILE *fp = fopen(page.filename, "a");
-		if(fp != NULL) {
-			fprintf (fp, "%s\n", word);
-		}
-		fclose(fp);
-
-		size_t string_size = snprintf(NULL, 0, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, word);
-		char * string = (char *)malloc(string_size + 1);
-		snprintf(string, string_size +1, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, word);
-		printMessage(i, string);
-
-		pthread_mutex_unlock(pages_mutexs[index]);
-
-		sem_post(WseccionOut);
-		sem_post(Wavailable);
-	}
-}
-
-// Funcion productora para la escritura
 void * save(void * input) {
-	// Obtenemos un indice de instruccion, con eso obtendremos el resto de la informacion
+	sem_wait(Wavailable);
+
+	// Obtenemos el indice entregado, con eso buscaremos la informacion necesaria 
 	int indice = (int) input;
 
-	sem_wait(Wavailable);
-	sem_wait(WseccionIn);
-
+	// Creamos una copia de la instruccion correpondiente
+	// Guardamos aparte la palabra para evitar problemas con un posible futuro realloc del arreglo de instrucciones
 	pthread_mutex_lock(&instructionsMutex);
-	writes[Wnextin] = instructions[indice];
+	Instruction i = instructions[indice];
+	char * word = i.word;
 	pthread_mutex_unlock(&instructionsMutex);
+	
+	Page page = nextPage(word);
+	int index = getIndex(page.letter);
 
-	Wnextin = (Wnextin + 1) % NWRITE;
+	pthread_mutex_lock(pages_mutexs[index]);
+	
+	page = nextPage(word);
+	index = getIndex(page.letter);
 
-	sem_post(WseccionIn);
-	sem_post(Wcount);
+	FILE *fp = fopen(page.filename, "a");
+	if(fp != NULL) {
+		fprintf (fp, "%s\n", word);
+	}
+	fclose(fp);
+
+	size_t string_size = snprintf(NULL, 0, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, word);
+	char * string = (char *)malloc(string_size + 1);
+	snprintf(string, string_size +1, "[SAVE] %c.%d.%d:%s", page.letter, page.number, page.index, word);
+	printMessage(i, string);
+
+	pthread_mutex_unlock(pages_mutexs[index]);
+
+	sem_post(Wavailable);
 
 	return NULL;
 }
 
-
 // Funcion para obtener una palabra en base a un indice
-void * getFromFile(void * input) {
+void * get(void * input) {
 	sem_wait(Gavailable);
 
 	// Obtenemos un indice de instruccion, con eso obtendremos el resto de la informacion
@@ -587,7 +546,7 @@ void * manageInstructions(void * input) {
 		} else if (strcmp(instructions[currentInstruction].command, "find") == 0) {
 			pthread_create(&instructions[currentInstruction].thread, NULL, find, (void *)currentInstruction);
 		} else if (strcmp(instructions[currentInstruction].command, "get") == 0) {
-			pthread_create(&instructions[currentInstruction].thread, NULL, getFromFile, (void *)currentInstruction);
+			pthread_create(&instructions[currentInstruction].thread, NULL, get, (void *)currentInstruction);
 		}
 
 		sem_post(workingInstruction);
@@ -603,6 +562,7 @@ void increaseInstructionsList() {
 	pthread_mutex_lock(&instructionsMutex);
 	// Como el instructionsCounter empieza en -1, el tamaño del arreglo debe ser de instructionsCounter+1
 	instructions = (Instruction *) realloc(instructions, (sizeof(Instruction) * (instructionsCounter +1)));
+	
 	pthread_mutex_unlock(&instructionsMutex);
 }
 
@@ -611,9 +571,6 @@ int main() {
 	initialize();
 
 	// Levantamos los threads del consumidor de escrituras y del administrador de instrucciones
-	pthread_t writeOnFileThread;
-	pthread_create(&writeOnFileThread, NULL, writeOnFile, NULL);
-
 	pthread_t instructionsManager;
 	pthread_create(&instructionsManager, NULL, manageInstructions, NULL);
 	
@@ -659,7 +616,7 @@ int main() {
 				strcpy(instructions[instructionsCounter].command, command);
 				strcpy(instructions[instructionsCounter].word, word);
 				instructions[instructionsCounter].index = instructionsCounter;
-
+				
 				// Aumentamos el semaforo de instrucciones
 				sem_post(Icounter);
 			} else {
@@ -682,13 +639,13 @@ int main() {
 	FILE *fp;
 
 	// Si estamos leyendo desde un archivo abrimos el archivo de salida
-	if(!isatty(0)) {
-		fp = fopen("query.out", "w");
-		if (fp == NULL) {
-			printf("No se pudo abrir el archivo de salida query.out\n");
-			return 0;
-		}
-	}
+	// if(!isatty(0)) {
+	// 	fp = fopen("query.out", "w");
+	// 	if (fp == NULL) {
+	// 		printf("No se pudo abrir el archivo de salida query.out %s\n", strerror(errno));
+	// 		return 0;
+	// 	}
+	// }
 
 	int i;
 	// Esperamos que cada thread de funcion termine, en orden
@@ -698,6 +655,14 @@ int main() {
 
 		// Esperamos que el thread termine
 		pthread_join(instructions[i].thread, NULL);
+
+		if(i == 0 && !isatty(0)) {
+			fp = fopen("query.out", "w");
+			if (fp == NULL) {
+				printf("No se pudo abrir el archivo de salida query.out %s\n", strerror(errno));
+				return 0;
+			}
+		}
 	
 		pthread_mutex_lock(&instructionsMutex);
 
