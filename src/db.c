@@ -9,6 +9,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <errno.h>
 
 //Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
 #define NWRITE 200
@@ -72,7 +73,7 @@ sem_t * workingInstruction;
 // Si estamos en modo "terminal" imprimimos directamente
 // Si no lo guardamos en el campo "response" de la instruccion dada para imprimirlo al final en el archivo
 void printMessage(Instruction i, char * message) {
-	//printf("(*) %s\n", message);
+	printf("(*) %s\n", message);
 	if(isatty(0)) {
 		printf("%s\n", message);
 	}
@@ -292,7 +293,7 @@ void * writeOnFile(void * input) {
 // Funcion productora para la escritura
 void * save(void * input) {
 	// Obtenemos un indice de instruccion, con eso obtendremos el resto de la informacion
-	int indice = *(int *) input;
+	int indice = (int) input;
 
 	sem_wait(Wavailable);
 	sem_wait(WseccionIn);
@@ -315,7 +316,6 @@ void * getFromFile(void * input) {
 	sem_wait(Gavailable);
 
 	// Obtenemos un indice de instruccion, con eso obtendremos el resto de la informacion
-	//int indice = *(int *) input;
 	int indice = (int) input;
 
 	pthread_mutex_lock(&instructionsMutex);
@@ -407,7 +407,6 @@ void * getFromFile(void * input) {
 		snprintf(output_message, output_message_size +1, "[GET] El indice %s no existe.", copyIndex);
 	}
 
-	printf("IMprimir %d\n", indice);
 	printMessage(instruccion, output_message);
 	
 	sem_post(Gavailable);
@@ -472,7 +471,7 @@ void * findFromFile(void * input) {
 void * find(void * input) {
 
 	// Obtenemos el indice entregado, con eso buscaremos la informacion necesaria 
-	int indice = *(int *) input;
+	int indice = (int) input;
 
 	pthread_mutex_lock(&instructionsMutex);
 	Instruction instruccion = instructions[indice];
@@ -560,9 +559,9 @@ void * find(void * input) {
 	}
 	else {
 		// SI no encontramos resultados generamos un mensaje con la informacion
-		message_size = snprintf(NULL, 0, "[FIND] No se encontro la palabra: %s\n", word);
+		message_size = snprintf(NULL, 0, "[FIND] No se encontro la palabra: %s", word);
 		message = (char *)malloc(message_size + 1);
-		snprintf(message, message_size+1, "[FIND] No se encontro la palabra: %s\n", word);
+		snprintf(message, message_size+1, "[FIND] No se encontro la palabra: %s", word);
 	}
 
 	printMessage(instruccion, message);
@@ -584,9 +583,9 @@ void * manageInstructions(void * input) {
 		
 		// Se levanta el thread en la funcion correspondiente
 		if (strcmp(instructions[currentInstruction].command, "save") == 0) {
-			pthread_create(&instructions[currentInstruction].thread, NULL, save, &currentInstruction);
+			pthread_create(&instructions[currentInstruction].thread, NULL, save, (void *)currentInstruction);
 		} else if (strcmp(instructions[currentInstruction].command, "find") == 0) {
-			pthread_create(&instructions[currentInstruction].thread, NULL, find, &currentInstruction);
+			pthread_create(&instructions[currentInstruction].thread, NULL, find, (void *)currentInstruction);
 		} else if (strcmp(instructions[currentInstruction].command, "get") == 0) {
 			pthread_create(&instructions[currentInstruction].thread, NULL, getFromFile, (void *)currentInstruction);
 		}
@@ -680,9 +679,6 @@ int main() {
 			printf ("> ");
 	}
 	
-	
-	sem_wait(workingInstruction);
-	
 	FILE *fp;
 
 	// Si estamos leyendo desde un archivo abrimos el archivo de salida
@@ -697,6 +693,10 @@ int main() {
 	int i;
 	// Esperamos que cada thread de funcion termine, en orden
 	for(i=0; i <= instructionsCounter; i++) {
+		// Nos aseguramos que el thread ya se haya creado
+		sem_wait(workingInstruction);
+
+		// Esperamos que el thread termine
 		pthread_join(instructions[i].thread, NULL);
 	
 		pthread_mutex_lock(&instructionsMutex);
