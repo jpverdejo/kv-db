@@ -11,10 +11,10 @@
 #include <ctype.h>
 #include <errno.h>
 
-//Como las paginas tendran un maximo de 1MB (palabras de 100 bytes * 10.000 lineas) podemos tener 1000 workers que trabajen con archivos
-#define NWRITE 1
-#define NREAD 1
-#define NFIND 1
+// En OS X el limite maximo de archivos abiertos es de 20
+#define NWRITE 5
+#define NREAD 5
+#define NFIND 7
 #define ENTRIESPERPAGE 10000
 
 // Estructura para definir una pagina donde escribir una nueva entrada
