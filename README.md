@@ -1,6 +1,18 @@
 #Base de datos Llave - Valor
 ######Lab 2 - Sistemas Operativos - USACH 
 
+###Ejecución:
+ - Compilacion:
+  - ```make```
+ - Ejecución modo "terminal"
+  - ```./build/db.exe```
+ - Ejecución con archivo de entrada
+  - ```./build/db.exe < <archivo input>```
+
+###Requisitos:
+ - Se debe crar manualmente los directorios ```data``` y ```build``` en la raiz del programa
+ - El archivo de entrada debe tener una linea vacía al final
+
 ###Arquitectura de la aplicación:
 Se tiene una estructura llamada "Instruction" que mantiene la información de cada instruccion:
  - Comando (Char *)
@@ -20,11 +32,3 @@ La funcion find levanta una hebra (findFromFile) por cada pagina del indice (pri
 Todas las hebras que leen archivos (save, get, findFromFile) tienen semaforos contadores por funcion, porque no es posible abrir mas de N archivos por proceso (En el caso de OS X: 20)
 
 Al finalizar todas las instrucciones se ejecuta la funcion finishExecution() para que en caso de que se haya usado un archivo de entrada, se impriman los resultados en query.out
-
-###Ejecución:
- - Compilacion:
-  - ```make```
- - Ejecución modo "terminal"
-  - ```./build/db.exe```
- - Ejecución con archivo de entrada
-  - ```./build/db.exe < <archivo input>```
