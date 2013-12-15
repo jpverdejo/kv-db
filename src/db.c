@@ -509,9 +509,10 @@ void * find(void * input) {
 		snprintf(message, message_size+1, "[FIND] %s: ", word);
 
 		for (i = 0; i < numberResults; i++) {
-			message_size = snprintf(NULL, 0, "%s%s, ", message, resultIDs[i]);
-			message = (char *) realloc(message, message_size + 1);
-			snprintf(message, message_size+1, "%s%s, ", message, resultIDs[i]);
+			message_size = strlen(resultIDs[i]) +2;
+			message = (char *) realloc(message, (sizeof(char) * (strlen(message) + message_size + 1)));
+			strcat(message, resultIDs[i]);
+			strcat(message, ", ");
 		}
 
 		message[(strlen(message) -2)] = '\0';
